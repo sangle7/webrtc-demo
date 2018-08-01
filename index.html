@@ -1,0 +1,185 @@
+<video id="localVideo" autoplay></video>
+<video id="remoteVideo" autoplay></video>
+<br>
+<input type="text" id="server" value="ws://localhost:8765">
+<input type="text" id="turn" value="stun:stun.l.google.com:19302">
+<input id="connect" disabled type="button" value="connect">
+<script>
+	//polyfills
+	var RTCPeerConnection = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
+	var RTCSessionDescription = window.RTCSessionDescription || window.webkitRTCSessionDescription || window.mozRTCSessionDescription;
+	var RTCIceCandidate = window.RTCIceCandidate || window.webkitRTCIceCandidate || window.mozRTCIceCandidate;
+	navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+
+	//request & load user's stream into videoA
+	navigator.getUserMedia({
+		video: true,
+		audio: true
+	}, function (stream) {
+		// localVideo.src = URL.createObjectURL(stream);
+		localVideo.srcObject = stream
+		server.disabled = false;
+		connect.disabled = false;
+		connect.onclick = function () {
+			connect.disabled = true;
+			server.disabled = true;
+			var socket = new WebSocket(server.value);
+			socket.onmessage = function (event) {
+				var message = JSON.parse(event.data);
+				switch (message.type) {
+					case 'SDP_Stage_1':
+						peerConnection.createOffer()
+							.then(offerDescription => {
+								peerConnection.setLocalDescription(offerDescription)
+								socket.send(JSON.stringify({
+									type: 'offer',
+									data: offerDescription
+								}));
+							})
+							.catch(errorHandler)
+						break;
+					case 'SDP_Stage_2':
+						peerConnection.setRemoteDescription(message.data)
+							.then(() => {
+								return peerConnection.createAnswer()
+									.then(answerDescription => {
+										peerConnection.setLocalDescription(answerDescription)
+										socket.send(JSON.stringify({
+											type: 'answer',
+											data: answerDescription
+										}));
+									})
+							})
+							.catch(errorHandler)
+						break;
+					case 'SDP_Stage_3':
+						peerConnection.setRemoteDescription(message.data)
+							.then(successHandler)
+							.catch(errorHandler)
+						break;
+					case 'ice':
+						peerConnection.addIceCandidate(new RTCIceCandidate(message.data))
+							.catch(errorHandler);
+						break;
+				}
+			}
+
+			var peerConnection = new RTCPeerConnection({
+				'iceServers': [{
+						url: 'stun:stun01.sipphone.com'
+					},
+					{
+						url: 'stun:stun.ekiga.net'
+					},
+					{
+						url: 'stun:stun.fwdnet.net'
+					},
+					{
+						url: 'stun:stun.ideasip.com'
+					},
+					{
+						url: 'stun:stun.iptel.org'
+					},
+					{
+						url: 'stun:stun.rixtelecom.se'
+					},
+					{
+						url: 'stun:stun.schlund.de'
+					},
+					{
+						url: 'stun:stun.l.google.com:19302'
+					},
+					{
+						url: 'stun:stun1.l.google.com:19302'
+					},
+					{
+						url: 'stun:stun2.l.google.com:19302'
+					},
+					{
+						url: 'stun:stun3.l.google.com:19302'
+					},
+					{
+						url: 'stun:stun4.l.google.com:19302'
+					},
+					{
+						url: 'stun:stunserver.org'
+					},
+					{
+						url: 'stun:stun.softjoys.com'
+					},
+					{
+						url: 'stun:stun.voiparound.com'
+					},
+					{
+						url: 'stun:stun.voipbuster.com'
+					},
+					{
+						url: 'stun:stun.voipstunt.com'
+					},
+					{
+						url: 'stun:stun.voxgratia.org'
+					},
+					{
+						url: 'stun:stun.xten.com'
+					},
+					{
+						url: 'turn:numb.viagenie.ca',
+						credential: 'muazkh',
+						username: 'webrtc@live.com'
+					},
+					{
+						url: 'turn:192.158.29.39:3478?transport=udp',
+						credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA=',
+						username: '28224511:1379330808'
+					},
+					{
+						url: 'turn:192.158.29.39:3478?transport=tcp',
+						credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA=',
+						username: '28224511:1379330808'
+					}
+				]
+			});
+			peerConnection.onicecandidate = function (event) {
+				console.log("Outgoing ICE candidate: " + event.candidate)
+				if (event.candidate)
+					socket.send(JSON.stringify({
+						type: 'ice',
+						data: event.candidate
+					}));
+			};
+
+			peerConnection.oniceconnectionstatechange = function (event) {
+				console.log("*** ICE connection state changed to " + peerConnection.iceConnectionState);
+
+			}
+
+			peerConnection.onicegatheringstatechange = function (event) {
+				console.log("*** ICE gathering state changed to: " + peerConnection.iceGatheringState);
+			}
+
+			peerConnection.onsignalingstatechange = function (event) {
+				console.log("*** WebRTC signaling state changed to: " + peerConnection.signalingState);
+			}
+
+			peerConnection.onnegotiationneeded = function () {
+				console.log("*** Negotiation needed");
+			}
+
+			peerConnection.onaddstream = function (event) {
+				console.log(event)
+				remoteVideo.srcObject = event.stream;
+
+			};
+
+			peerConnection.addStream(stream);
+		};
+	}, errorHandler);
+
+	function errorHandler() {
+		console.log('error', arguments);
+	}
+
+	function successHandler() {
+		console.log('success', arguments);
+	}
+</script>
