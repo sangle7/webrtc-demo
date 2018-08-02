@@ -16,39 +16,87 @@
 		console.log('failure:', error);
 	});
 
+	let localstream
+	let connectionA
+	let connectionB
+
+	function onIceStateChange(pc, event) {
+		if (pc) {
+			console.log(`${pc} ICE state: ${pc.iceConnectionState}`);
+			console.log('ICE state change event: ', event);
+		}
+	}
+
+	function getOtherPc(pc) {
+		return (pc === connectionA) ? connectionB : connectionA;
+	}
+
+	function gotRemoteStream(e) {
+		if (videoB.srcObject !== e.streams[0]) {
+			videoB.srcObject = e.streams[0];
+			console.log('pc2 received remote stream');
+		}
+	}
+
+	function onSetSessionDescriptionError(error) {
+		console.log(`Failed to set session description: ${error.toString()}`);
+	}
+
+	function onSetLocalSuccess(pc) {
+		console.log(`${pc} setLocalDescription complete`);
+	}
+
+	function onSetRemoteSuccess(pc) {
+		console.log(`${pc} setRemoteDescription complete`);
+	}
+
+	function onIceCandidate(pc, event) {
+		getOtherPc(pc).addIceCandidate(event.candidate)
+			.then(() => console.log('add candidate success'), err => console.log (`failed to add ICE Candidate: ${err.toString()}`));
+		console.log(`${pc} ICE candidate:\n${event.candidate ? event.candidate.candidate : '(null)'}`);
+	}
+
 
 	function successHandler(stream) {
 		videoA.srcObject = stream
 
+		localstream = stream
+
+
 		//set up the "local" connection, connectionA
-		var connectionA = new RTCPeerConnection(null);
-		connectionA.onicecandidate = function (event) {
-			//give A's ICE candidate to B
-			if (event.candidate)
-				connectionB.addIceCandidate(new RTCIceCandidate(event.candidate));
-		};
+		connectionA = new RTCPeerConnection(null);
+		connectionA.onicecandidate = e => onIceCandidate(connectionA, e)
 
 		//set up the "remote" connection, connectionB
-		var connectionB = new RTCPeerConnection(null);
-		connectionB.onicecandidate = function (event) {
-			//give B's ICE candidate to A
-			if (event.candidate)
-				connectionA.addIceCandidate(new RTCIceCandidate(event.candidate));
-		};
-		connectionB.onaddstream = function (event) {
-			//after connection is made, load the stream into videoB
-			// videoB.src = URL.createObjectURL(event.stream);
-			videoB.srcObject = event.stream
-		};
+		connectionB = new RTCPeerConnection(null);
+		connectionB.onicecandidate = e => onIceCandidate(connectionB, e)
+		connectionA.oniceconnectionstatechange = e => onIceStateChange(connectionA, e);
+		connectionB.oniceconnectionstatechange = e => onIceStateChange(connectionB, e);
+		connectionB.ontrack = gotRemoteStream;
+		// connectionB.onaddstream = function (event) {
+		// 	//after connection is made, load the stream into videoB
+		// 	// videoB.src = URL.createObjectURL(event.stream);
+		// 	videoB.srcObject = event.stream
+		// };
+
+
 
 		//set the data sent by connectionA to be the user's video.
-		connectionA.addStream(stream);
+		// connectionA.addStream(stream);
+		localstream.getTracks().forEach(track => connectionA.addTrack(track, localstream));
+
+		console.log('add track')
+
+		const offerOptions = {
+			offerToReceiveAudio: 1,
+			offerToReceiveVideo: 1
+		};
 
 		//exchange of SDP, started with an offer
-		connectionA.createOffer()
+		connectionA.createOffer(offerOptions)
 			.then(desA => {
-				connectionA.setLocalDescription(desA)
-				connectionB.setRemoteDescription(desA)
+				connectionA.setLocalDescription(desA).then(() => onSetLocalSuccess(connectionA), onSetSessionDescriptionError);
+				connectionB.setRemoteDescription(desA).then(() => onSetRemoteSuccess(connectionB), onSetSessionDescriptionError);
 				return connectionB.createAnswer()
 			})
 			.then(desB => {
