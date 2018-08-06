@@ -1,8 +1,6 @@
 <video id="localVideo" autoplay></video>
 <video id="remoteVideo" autoplay></video>
 <br>
-<input type="text" id="server" value="wss://10.65.93.61:6503">
-<input type="text" id="turn" value="stun:stun.l.google.com:19302">
 <input id="connect" type="button" value="connect">
 <script src="/adapter.js"></script>
 <script>
@@ -99,7 +97,6 @@
 		]
 	});
 
-	//request & load user's stream into videoA
 	connect.onclick = function () {
 		var socket = new WebSocket('wss://10.65.93.61:6503');
 		socket.onmessage = function (event) {
